@@ -139,7 +139,7 @@ def combine_date_and_time(date_series, time_series):
         df["Departure Time (Local)"],
     )
 
-        df["Arrival DateTime"] = combine_date_and_time(
+    df["Arrival DateTime"] = combine_date_and_time(
         df["Departure Date"],
         df["Arrival Time (Local)"],
     )
