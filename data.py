@@ -134,25 +134,25 @@ def combine_date_and_time(date_series, time_series):
     return dates + times
 
 
-df["Departure DateTime"] = combine_date_and_time(
-    df["Departure Date"],
-    df["Departure Time (Local)"],
-)
+    df["Departure DateTime"] = combine_date_and_time(
+        df["Departure Date"],
+        df["Departure Time (Local)"],
+    )
 
-    df["Arrival DateTime"] = combine_date_and_time(
-    df["Departure Date"],
-    df["Arrival Time (Local)"],
-)
+        df["Arrival DateTime"] = combine_date_and_time(
+        df["Departure Date"],
+        df["Arrival Time (Local)"],
+    )
 
-overnight = (
-    df["Arrival DateTime"]
-    < df["Departure DateTime"]
-)
+    overnight = (
+        df["Arrival DateTime"]
+        < df["Departure DateTime"]
+    )
 
-df.loc[
-    overnight,
-    "Arrival DateTime"
-] += pd.Timedelta(days=1)
+    df.loc[
+        overnight,
+        "Arrival DateTime"
+    ] += pd.Timedelta(days=1)
 
     # -----------------------------
     # Duration
