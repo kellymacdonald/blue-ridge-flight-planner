@@ -144,15 +144,15 @@ df["Departure DateTime"] = combine_date_and_time(
     df["Arrival Time (Local)"],
 )
 
-    overnight = (
-        df["Arrival DateTime"]
-        < df["Departure DateTime"]
-    )
+overnight = (
+    df["Arrival DateTime"]
+    < df["Departure DateTime"]
+)
 
-    df.loc[
-        overnight,
-        "Arrival DateTime"
-    ] += pd.Timedelta(days=1)
+df.loc[
+    overnight,
+    "Arrival DateTime"
+] += pd.Timedelta(days=1)
 
     # -----------------------------
     # Duration
