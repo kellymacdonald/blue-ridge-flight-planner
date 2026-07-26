@@ -48,7 +48,6 @@ st.markdown(
 st.title("Flight Planner")
 
 
-@st.cache_data
 def get_data():
     return load_flights("flights.xlsx")
 
