@@ -36,6 +36,46 @@ SEARCHES = [
         "arrival": "SFO",
         "date": "2026-10-25",
     },
+        {
+        "departure": "BOS",
+        "arrival": "ATL",
+        "date": "2026-10-21",
+    },
+    {
+        "departure": "SFO",
+        "arrival": "ATL",
+        "date": "2026-10-21",
+    },
+    {
+        "departure": "ATL",
+        "arrival": "BOS",
+        "date": "2026-10-26",
+    },
+    {
+        "departure": "ATL",
+        "arrival": "SFO",
+        "date": "2026-10-26",
+    },
+        {
+        "departure": "BOS",
+        "arrival": "ATL",
+        "date": "2026-10-23",
+    },
+    {
+        "departure": "SFO",
+        "arrival": "ATL",
+        "date": "2026-10-23",
+    },
+    {
+        "departure": "ATL",
+        "arrival": "BOS",
+        "date": "2026-10-27",
+    },
+    {
+        "departure": "ATL",
+        "arrival": "SFO",
+        "date": "2026-10-27",
+    },
 ]
 
 
