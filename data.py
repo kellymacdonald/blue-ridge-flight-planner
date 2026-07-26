@@ -59,181 +59,174 @@ def atl_time(row):
 # --------------------------------------------------------
 
 def load_flights(filename):
+    raw = pd.read_excel(filename, header=None)
 
-    filename = Path(filename)
+    # Locate the actual header row.
+    header_row = None
+    for index, row in raw.iterrows():
+        values = row.astype(str).str.strip().tolist()
+        if "Departure Airport" in values and "Arrival Airport" in values:
+            header_row = index
+            break
 
-    raw = pd.read_excel(
-        filename,
-        header=None
-    )
-
-    header_row = raw[
-        raw.astype(str)
-        .apply(
-            lambda r: r.str.contains(
-                "Flight Number",
-                case=False,
-                na=False
-            ).any(),
-            axis=1
+    if header_row is None:
+        raise ValueError(
+            "Could not find the flight-data header row in the spreadsheet."
         )
-    ].index[0]
 
-    df = pd.read_excel(
-        filename,
-        skiprows=header_row
-    )
+    df = pd.read_excel(filename, header=header_row)
 
-    df.columns = (
-        df.columns
-        .astype(str)
-        .str.strip()
-    )
+    required_columns = [
+        "Departure Airport",
+        "Arrival Airport",
+        "Departure Date",
+        "Departure Time (Local)",
+        "Arrival Time (Local)",
+        "Cost ($)",
+        "Flight Number",
+    ]
 
-    # -----------------------------
-    # Date
-    # -----------------------------
+    missing_columns = [
+        column for column in required_columns
+        if column not in df.columns
+    ]
+
+    if missing_columns:
+        raise ValueError(
+            "Missing required spreadsheet columns: "
+            + ", ".join(missing_columns)
+        )
+
+    # Remove empty rows and normalize text fields.
+    df = df.dropna(
+        subset=[
+            "Departure Airport",
+            "Arrival Airport",
+            "Departure Date",
+            "Departure Time (Local)",
+            "Arrival Time (Local)",
+            "Flight Number",
+        ]
+    ).copy()
+
+    for column in [
+        "Departure Airport",
+        "Arrival Airport",
+        "Flight Number",
+    ]:
+        df[column] = df[column].astype(str).str.strip()
+
+    df["Departure Airport"] = df["Departure Airport"].str.upper()
+    df["Arrival Airport"] = df["Arrival Airport"].str.upper()
 
     df["Departure Date"] = pd.to_datetime(
-        df["Departure Date"]
+        df["Departure Date"],
+        errors="coerce",
     )
 
-    dep = df["Departure Time (Local)"].apply(clean_time)
-    arr = df["Arrival Time (Local)"].apply(clean_time)
-
-def combine_date_and_time(date_series, time_series):
-    dates = pd.to_datetime(date_series).dt.normalize()
-
-    def time_to_timedelta(value):
-        if pd.isna(value):
+    def combine_date_and_time(date_value, time_value):
+        if pd.isna(date_value) or pd.isna(time_value):
             return pd.NaT
 
-        # Excel may return a Python time object.
-        if hasattr(value, "hour"):
-            return pd.Timedelta(
-                hours=value.hour,
-                minutes=value.minute,
-                seconds=value.second,
+        date_value = pd.Timestamp(date_value).normalize()
+
+        # Excel time cells normally arrive as datetime.time objects.
+        if hasattr(time_value, "hour"):
+            return date_value + pd.Timedelta(
+                hours=time_value.hour,
+                minutes=time_value.minute,
+                seconds=getattr(time_value, "second", 0),
             )
 
-        # Handles strings such as:
-        # "10:48 PM", "22:48:00", or "22:48"
-        parsed = pd.to_datetime(str(value), errors="coerce")
+        # Also supports strings such as:
+        # "5:30 AM", "05:30:00", and "17:30".
+        parsed_time = pd.to_datetime(
+            str(time_value).strip(),
+            format="mixed",
+            errors="coerce",
+        )
 
-        if pd.isna(parsed):
+        if pd.isna(parsed_time):
             return pd.NaT
 
-        return pd.Timedelta(
-            hours=parsed.hour,
-            minutes=parsed.minute,
-            seconds=parsed.second,
+        return date_value + pd.Timedelta(
+            hours=parsed_time.hour,
+            minutes=parsed_time.minute,
+            seconds=parsed_time.second,
         )
 
-    times = time_series.apply(time_to_timedelta)
+    df["Departure DateTime"] = [
+        combine_date_and_time(date_value, time_value)
+        for date_value, time_value in zip(
+            df["Departure Date"],
+            df["Departure Time (Local)"],
+        )
+    ]
 
-    return dates + times
+    df["Arrival DateTime"] = [
+        combine_date_and_time(date_value, time_value)
+        for date_value, time_value in zip(
+            df["Departure Date"],
+            df["Arrival Time (Local)"],
+        )
+    ]
 
-
-    df["Departure DateTime"] = combine_date_and_time(
-        df["Departure Date"],
-        df["Departure Time (Local)"],
-    )
-
-    df["Arrival DateTime"] = combine_date_and_time(
-        df["Departure Date"],
-        df["Arrival Time (Local)"],
-    )
-
+    # Arrival times earlier than departure times occur on the next day.
     overnight = (
-        df["Arrival DateTime"]
-        < df["Departure DateTime"]
+        df["Arrival DateTime"].notna()
+        & df["Departure DateTime"].notna()
+        & (df["Arrival DateTime"] < df["Departure DateTime"])
     )
 
-    df.loc[
-        overnight,
-        "Arrival DateTime"
-    ] += pd.Timedelta(days=1)
+    df.loc[overnight, "Arrival DateTime"] += pd.Timedelta(days=1)
 
-    # -----------------------------
-    # Duration
-    # -----------------------------
+    # Remove rows containing invalid dates or times.
+    df = df.dropna(
+        subset=[
+            "Departure DateTime",
+            "Arrival DateTime",
+        ]
+    ).copy()
 
-    df["Duration (min)"] = (
-        (
-            df["Arrival DateTime"]
-            - df["Departure DateTime"]
-        )
-        .dt.total_seconds()
-        .div(60)
-        .astype(int)
+    df["Cost ($)"] = pd.to_numeric(
+        df["Cost ($)"],
+        errors="coerce",
     )
 
-    hrs = df["Duration (min)"] // 60
-    mins = df["Duration (min)"] % 60
+    df = df.dropna(subset=["Cost ($)"]).copy()
 
-    df["Duration Label"] = (
-        hrs.astype(str)
-        + "h "
-        + mins.astype(str)
-        + "m"
+    # Preserve the derived columns expected elsewhere in the app.
+    df["Flight ID"] = (
+        df["Flight Number"].str.replace(" ", "", regex=False)
+        + "-"
+        + df["Departure DateTime"].dt.strftime("%Y%m%d%H%M")
     )
-
-    # -----------------------------
-    # Airline
-    # -----------------------------
-
-    prefix = (
-        df["Flight Number"]
-        .astype(str)
-        .str.split()
-        .str[0]
-    )
-
-    df["Airline"] = (
-        prefix.map(AIRLINES)
-        .fillna(prefix)
-    )
-
-    # -----------------------------
-    # Redeye
-    # -----------------------------
-
-    df["Redeye"] = (
-        (df["Departure DateTime"].dt.hour >= 21)
-        |
-        (df["Arrival DateTime"].dt.hour < 7)
-    )
-
-    # -----------------------------
-    # Stakeholder
-    # -----------------------------
-
-    df["Stakeholder"] = df.apply(
-        stakeholder,
-        axis=1,
-    )
-
-    # -----------------------------
-    # ATL Coordination Time
-    # -----------------------------
-
-    df["ATL Time"] = df.apply(
-        atl_time,
-        axis=1,
-    )
-
-    # -----------------------------
-    # Route
-    # -----------------------------
 
     df["Route"] = (
         df["Departure Airport"]
         + " → "
         + df["Arrival Airport"]
     )
-    
-    # Stable ID used for chart selections
-    df = df.reset_index(drop=True)
-    df["Flight ID"] = df.index.astype(int)
+
+    df["Stakeholder"] = df.apply(
+        lambda row: (
+            "BOS"
+            if "BOS" in {
+                row["Departure Airport"],
+                row["Arrival Airport"],
+            }
+            else "SFO"
+        ),
+        axis=1,
+    )
+
+    df["Duration"] = (
+        df["Arrival DateTime"]
+        - df["Departure DateTime"]
+    )
+
+    df["Redeye"] = (
+        df["Departure DateTime"].dt.hour >= 20
+    )
 
     return df
