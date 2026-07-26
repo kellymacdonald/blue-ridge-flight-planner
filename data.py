@@ -101,19 +101,48 @@ def load_flights(filename):
     dep = df["Departure Time (Local)"].apply(clean_time)
     arr = df["Arrival Time (Local)"].apply(clean_time)
 
-    df["Departure DateTime"] = pd.to_datetime(
-        df["Departure Date"].dt.strftime("%m/%d/%Y")
-        + " "
-        + dep,
-        format="%m/%d/%Y %I:%M %p",
-    )
+def combine_date_and_time(date_series, time_series):
+    dates = pd.to_datetime(date_series).dt.normalize()
 
-    df["Arrival DateTime"] = pd.to_datetime(
-        df["Departure Date"].dt.strftime("%m/%d/%Y")
-        + " "
-        + arr,
-        format="%m/%d/%Y %I:%M %p",
-    )
+    def time_to_timedelta(value):
+        if pd.isna(value):
+            return pd.NaT
+
+        # Excel may return a Python time object.
+        if hasattr(value, "hour"):
+            return pd.Timedelta(
+                hours=value.hour,
+                minutes=value.minute,
+                seconds=value.second,
+            )
+
+        # Handles strings such as:
+        # "10:48 PM", "22:48:00", or "22:48"
+        parsed = pd.to_datetime(str(value), errors="coerce")
+
+        if pd.isna(parsed):
+            return pd.NaT
+
+        return pd.Timedelta(
+            hours=parsed.hour,
+            minutes=parsed.minute,
+            seconds=parsed.second,
+        )
+
+    times = time_series.apply(time_to_timedelta)
+
+    return dates + times
+
+
+df["Departure DateTime"] = combine_date_and_time(
+    df["Departure Date"],
+    df["Departure Time (Local)"],
+)
+
+    df["Arrival DateTime"] = combine_date_and_time(
+    df["Departure Date"],
+    df["Arrival Time (Local)"],
+)
 
     overnight = (
         df["Arrival DateTime"]
